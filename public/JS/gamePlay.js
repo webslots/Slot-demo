@@ -1,3 +1,20 @@
+// Listen for messages from parent iframe (external buttons)
+window.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+
+  if (data.action === "spin") {
+    if (typeof startSpin === "function") {
+      startSpin(); // Calls the slot’s spin function
+    }
+  }
+
+  if (data.action === "toggleAutoplay") {
+    if (typeof toggleAutoplay === "function") {
+      toggleAutoplay(); // Calls the slot’s autoplay toggle
+    }
+  }
+});
 "use strict"
 
 function spinSlots(){
