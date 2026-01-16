@@ -1,3 +1,20 @@
+// External control listener for WordPress iframe buttons
+window.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || typeof data !== "object") return;
+
+  if (data.action === "spin") {
+    if (typeof spinSlots === "function") {
+      spinSlots(); // Calls the real spin function
+    }
+  }
+
+  if (data.action === "toggleAutoplay") {
+    if (typeof autoPlay === "function") {
+      autoPlay(); // Calls the real autoplay function
+    }
+  }
+});
 // Listen for messages from parent iframe (external buttons)
 window.addEventListener("message", (event) => {
   const data = event.data;
