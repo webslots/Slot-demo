@@ -1,24 +1,18 @@
- // slotButtons.js
-import { spinGame, toggleAutoplay } from './gameplay.js';
+// SlotButtons.js V6 Hyper Pro
+"use strict";
 
+// Listen for messages from parent Elementor widget
 window.addEventListener("message", (event) => {
   const data = event.data;
   if (!data || typeof data !== "object") return;
 
-  switch (data.action) {
-    case "spin":
-      spinGame();
-      break;
-    case "toggleAutoplay":
-      toggleAutoplay(data.spins || 10);
-      break;
-    case "addBalance":
-      if (typeof window.balance !== "undefined") {
-        window.balance += data.amount;
-        const balanceEl = document.getElementById("player-balance");
-        if (balanceEl) balanceEl.innerText = window.balance;
-      }
-      break;
+  // Spin slot
+  if (data.action === "spin") {
+    if (typeof spinSlots === "function") spinSlots();
+  }
+
+  // Toggle autoplay
+  if (data.action === "toggleAutoplay") {
+    if (typeof toggleAutoplay === "function") toggleAutoplay(data.spins || 10);
   }
 });
- 
