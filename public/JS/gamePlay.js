@@ -1,236 +1,136 @@
-// External control listener for WordPress iframe buttons
-window.addEventListener("message", (event) => {
-  const data = event.data;
-  if (!data || typeof data !== "object") return;
+"use strict";
 
-  if (data.action === "spin") {
-    if (typeof spinSlots === "function") {
-      spinSlots(); // Calls the real spin function
-    }
-  }
+// ===== GLOBAL VARIABLES =====
+let balance = 1000;        // starting balance
+let betPerSpin = 10;       // default bet
+let auto = false;
+let numAutoSpins = 0;
+let canSpin = true;
 
-  if (data.action === "toggleAutoplay") {
-    if (typeof autoPlay === "function") {
-      autoPlay(); // Calls the real autoplay function
-    }
-  }
-});
-// Listen for messages from parent iframe (external buttons)
-window.addEventListener("message", (event) => {
-  const data = event.data;
-  if (!data || typeof data !== "object") return;
+// grab canvas and context (assumes canvas id="slotCanvas" in HTML)
+const canvas = document.getElementById("slotCanvas");
+const ctx = canvas.getContext("2d");
+const cWidth = canvas.width;
+const cHeight = canvas.height;
 
-  if (data.action === "spin") {
-    if (typeof startSpin === "function") {
-      startSpin(); // Calls the slot’s spin function
-    }
-  }
+// store reels info
+const numReels = 5;
+const numRows = 3;
+let tileSize = cHeight / numRows;
+let reels = [];
+let finalOutcome = [];
+let finalTiles = [];
+let loadedImages = {};  // keys: symbols, values: Image objects
 
-  if (data.action === "toggleAutoplay") {
-    if (typeof toggleAutoplay === "function") {
-      toggleAutoplay(); // Calls the slot’s autoplay toggle
-    }
-  }
-});
-"use strict"
-
-function spinSlots(){
-  if(canSpin == true){
-    console.log("balance: " + balance);
-    displayAllBetInfo();
-    if(totalBet==0){console.log('Please make a bet');
-  }else if(balance-totalBet<0){console.log("Insuffiecient funds");
-    }else{playGame();}
-  }
+// ===== BALANCE DISPLAY =====
+function updateBalanceUI() {
+  const balanceEl = document.getElementById("player-balance");
+  if (balanceEl) balanceEl.innerText = balance;
 }
 
-function playGame(){
-  balance = finalBalance; //allows user to continue playing without waiting for balance to finish updating.
-  // if(bonus == false){payoutSum = 0;}
-  ctxAnimate.clearRect(0,0,cWidth,cHeight);
-  shrink = false;
-  vPos = [0,0,0,0,0];
-  currentLine = 0;
+// ===== SPIN GAME =====
+export function spinGame() {
+  if (!canSpin) return;
+  if (balance < betPerSpin) return alert("Insufficient funds!");
+  balance -= betPerSpin;
+  updateBalanceUI();
   canSpin = false;
-  canvasScreen.style.zIndex = 99;
-  if(auto==false){balance -= totalBet;}
-  finalBalance = balance;
-  console.log(balance);
-  displayAllBetInfo();
+
   createOutcome();
-  findWinners();
-  casinoSound.play();
-  slideTile();
+  animateReels();
 }
 
-let gameNum = 0;
-function autoPlay(){
-  //takes all money for auto games but free for bonus games
-  if(auto==false&&bonus==false){
-    balance-=totalBet*numAutoGames;
-    finalBalance = balance;
-    auto = true;
-    displayAllBetInfo();
-  }
+// ===== AUTOPLAY =====
+export function toggleAutoplay(numSpins = 10) {
+  if (!canSpin) return;
+  auto = true;
+  numAutoSpins = numSpins;
 
-  if(0<numAutoGames){
-    if(canSpin==true){
-      playGame();
-      gameNum++;
-      numAutoGames--;
-      writeText.displayAutoGames();
-      console.log("Game " +gameNum);
+  function nextSpin() {
+    if (!auto || numAutoSpins <= 0) {
+      auto = false;
+      return;
     }
-    requestAnimationFrame(autoPlay);
-  }else{
-    auto = false;
-    gameNum = 0;
-    updateBalance();
+    spinGame();
+    numAutoSpins--;
+    setTimeout(nextSpin, 2500); // adjust delay to match spin animation
   }
+  nextSpin();
 }
 
-function findWinners(){
-  tilesInLineArr = [];
-  winningLines = [];
-  winningReels =[];
-
-  for(let lineNum = 0; lineNum<numLines; lineNum++){
-
-    //looks for 5 in a row winners and works down
-    for(let j=numReels;j>2;j--){
-      let tilesInLine = [];
-
-      for(let i= 0; i<j; i++){
-        tilesInLine.push(parseInt(finalTiles[i][lines[lineNum][i]].split('e')[1]))
-      }
-
-      let set = new Set(tilesInLine);
-      tilesInLine = [...set];
-      tilesInLine.sort();
-      //Needs new rule to find 3/4 wilds vs 4/5 of a kind
-      if(tilesInLine.length==1){
-        winningLines.push(lineNum);
-        winningReels.push(j);
-        console.log("Winner on line "+(lineNum+1));
-        payout = payouts[j-3][tilesInLine[0]]*betPerLine;
-        console.log("You won "+payout);
-        break; //prevents double/triple counting of 4/3 in a row winners
-      }else if(tilesInLine.length==2&&tilesInLine[0]==0){
-        winningLines.push(lineNum);
-        winningReels.push(j);
-        console.log("Winner on line " + (lineNum+1)+" with wilds");
-        payout = payouts[j-3][tilesInLine[1]]*betPerLine;
-        console.log("You won "+payout);
-        break;
-      }
-    }
-  }
-}
-
-function returnFairRandTile(rand, reel){
-  for(let n=0; n<numPics; n++){
-    if(rand<validTileNums[reel][n]){
-      return n;
-    }
-  }
-}
-
-function createOutcome(){
+// ===== CREATE OUTCOME =====
+function createOutcome() {
   finalOutcome = [];
   finalTiles = [];
-  for(let i =0; i<numReels;i++){
-    let colFinTiles = [];
-    let colFinTileKeys = [];
-    for(let j = 0; j<nTilesPerCol; j++){
-      // p = Math.floor(Math.random()*numPics);
-      let p = Math.floor(Math.random()*validTileNums[i][numPics-1]);
-      let tile = returnFairRandTile(p,i);
-      colFinTiles.push(loadedImages[Object.keys(loadedImages)[tile]]);
-      colFinTileKeys.push(Object.keys(loadedImages)[tile]);
+  for (let i = 0; i < numReels; i++) {
+    let reelTiles = [];
+    let reelKeys = [];
+    for (let j = 0; j < numRows; j++) {
+      const keys = Object.keys(loadedImages);
+      const randIndex = Math.floor(Math.random() * keys.length);
+      reelTiles.push(loadedImages[keys[randIndex]]);
+      reelKeys.push(keys[randIndex]);
     }
-    finalOutcome.push(colFinTiles);
-    finalTiles.push(colFinTileKeys.reverse());
+    finalOutcome.push(reelTiles);
+    finalTiles.push(reelKeys);
   }
 }
 
-//simplify with drawTiles function
+// ===== ANIMATE REELS (3D EFFECT) =====
+function animateReels() {
+  let vPos = Array(numReels).fill(0);
+  let speeds = Array(numReels).fill(30);
+  const deceleration = 0.95;
+  const maxVPos = tileSize * numRows;
 
-function drawFinalReel(reelNum){
-  let tileXPos = tileXPosArr[reelNum];
-  let tileYPosArr = yPosArr[reelNum];
-  let tileSize = tileSizeArr[reelNum];
-  let finalTileReel = finalTiles[reelNum]
-  for(let j = 0; j<nTilesPerCol; j++){
-    ctx.drawImage(loadedImages[finalTileReel[j]],tileXPos,tileYPosArr[j]+slotFrames[j],tileSize,tileSize)
-  }
-}
+  function frame() {
+    ctx.clearRect(0, 0, cWidth, cHeight);
 
-function drawFinalOutcome(){
-  ctx.clearRect(0,0,cWidth,cHeight);
-  for(let i =0; i<numReels;i++){
-    drawFinalReel(i);
-  }
-}
+    for (let r = 0; r < numReels; r++) {
+      for (let row = 0; row < numRows; row++) {
+        let symbolIndex = row;
+        const img = finalOutcome[r][symbolIndex];
 
-function slideTile(){
-  // var time = Date.now();
-  // if(!start) start = time;
-  // var progress = time-start;
+        // 3D effect: scale tiles near top/bottom
+        let scale = 1 - Math.abs(row - numRows / 2 + vPos[r] / tileSize) / (numRows * 2);
+        let size = tileSize * scale;
+        let x = r * tileSize;
+        let y = row * tileSize - vPos[r] % tileSize + (tileSize - size) / 2;
 
-  let numTiles = [];
-  let lastTilePos = [];
-  let reelSpeed = [];
-
-  for(let i = 0; i<numReels; i++){
-
-    numTiles[i] = numTilesFirstReel+tileDif*i
-    lastTilePos[i] = slotWidths[i]*(numTiles[i]+2)
-    reelSpeed[i] = Math.floor(speed*slotWidths[i]/200)
-
-    let tileXPos = tileXPosArr[i];
-    let tileYPosArr = yPosArr[i];
-    let tileSize = tileSizeArr[i];
-    let endReelTile = numTiles[i];
-
-    if(Math.floor(vPos[i])<lastTilePos[i]+reelSpeed[i]){
-      ctx.clearRect(xPos[i],yPosArr[i][0],slotWidths[i],slotWidths[i]*nTilesPerCol)
-      for(let n = -2; n<(endReelTile); n++){
-        let yLoc = tileYPosArr[0]-slotWidths[i]*(n)+vPos[i]
-        if(yLoc>tileYPosArr[0]-tileSize&&yLoc<tileYPosArr[2]+tileSize){
-          let rand = Math.floor(Math.random()*numPics);
-          ctx.drawImage(loadedImages[Object.keys(loadedImages)[rand]], tileXPos, yLoc,tileSize, tileSize);
-        }
+        ctx.save();
+        ctx.globalAlpha = scale; // fade edges
+        ctx.drawImage(img, x, y, size, size);
+        ctx.restore();
       }
-      //Adds outcome tiles to the screen
-      for(let c = 0; c<nTilesPerCol; c++){
-        ctx.drawImage(finalOutcome[i][c],tileXPos ,tileYPosArr[0]+slotFrames[i]-slotWidths[i]*(endReelTile+c)+vPos[i],tileSize, tileSize);
+
+      // increment vertical position
+      if (vPos[r] < maxVPos) {
+        vPos[r] += speeds[r];
+      } else {
+        speeds[r] *= deceleration;
       }
-      vPos[i] += reelSpeed[i];
-    }else{
-      ctx.clearRect(xPos[i],yPosArr[i][0],slotWidths[i],slotWidths[i]*nTilesPerCol)
-      drawFinalReel(i);
+    }
+
+    // check if all reels have stopped
+    if (vPos.every((v, i) => v >= maxVPos && speeds[i] < 0.5)) {
+      canSpin = true;
+      triggerWinEffect();
+      if (auto) toggleAutoplay(numAutoSpins);
+    } else {
+      requestAnimationFrame(frame);
     }
   }
 
-  if(vPos[numReels-1]<lastTilePos[numReels-1]){
-    window.requestAnimationFrame(slideTile);
-  }else{
-    if(winningLines.length>0){
-      // ctxAnimate.zindex = 99;
-      lineWin.play();
-      // drawWinningLines(winningLines[currentLine],winningReels[currentLine])
-      growAndShrink(winningLines[currentLine],winningReels[currentLine]);
-      drawWinnerBackground(winningLines[currentLine],winningReels[currentLine]);
-    }else{
-      //Find better place for this.
-      finalBalance = balance;
-      payoutSum = 0;
-      drawFinalOutcome();
-      setTimeout(function(){
-        canSpin=true;
-        canvasScreen.style.zIndex = -10;
-      },500)
-    }
-  }
+  frame();
+}
 
+// ===== WINNING EFFECTS =====
+function triggerWinEffect() {
+  // Example: +10 balance per spin randomly
+  const winnings = Math.floor(Math.random() * 50);
+  balance += winnings;
+  updateBalanceUI();
+
+  // Coin/confetti effect (simplified)
+  if (typeof confetti === "function") confetti();
 }
